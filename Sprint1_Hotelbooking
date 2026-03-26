@@ -1,0 +1,213 @@
+package com.hotel.ai;
+
+// AICustomerServiceConsole.java
+import com.alibaba.dashscope.aigc.generation.Generation;
+import com.alibaba.dashscope.aigc.generation.GenerationParam;
+import com.alibaba.dashscope.aigc.generation.GenerationResult;
+import com.alibaba.dashscope.common.Message;
+import com.alibaba.dashscope.common.Role;
+import com.alibaba.dashscope.exception.ApiException;
+import com.alibaba.dashscope.exception.InputRequiredException;
+import com.alibaba.dashscope.exception.NoApiKeyException;
+import com.alibaba.dashscope.utils.JsonUtils;
+
+import java.util.*;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+/**
+ * 酒店管理系统AI客服（控制台演示版）
+ * 硬性边界：无GUI、无网络通信（仅调用DashScope SDK）
+ * 核心功能：基于静态知识库的RAG问答，覆盖四类业务场景
+ */
+public class AICustomerServiceConsole {
+
+    // ==================== 静态知识库（模拟向量检索结果） ====================
+    private static final Map<String, List<String>> KNOWLEDGE_BASE = new HashMap<>();
+
+    static {
+        // 酒店预订类知识
+        KNOWLEDGE_BASE.put("预订", Arrays.asList(
+                "预订需提供入住人姓名、联系电话、入住日期和离店日期。",
+                "最早入住时间为下午14:00，最晚退房时间为次日12:00。",
+                "可通过官网、前台或客服电话预订，支持信用卡/支付宝/微信支付。"
+        ));
+        KNOWLEDGE_BASE.put("取消", Arrays.asList(
+                "免费取消需提前48小时通知，逾期将收取首晚房费。",
+                "预订时选择'灵活取消'套餐可免费取消至入住当日18:00。"
+        ));
+        KNOWLEDGE_BASE.put("房型", Arrays.asList(
+                "标准间：30㎡，含双早，¥588/晚；豪华间：45㎡，含双早+行政礼遇，¥888/晚；套房：70㎡，含四人早餐+接送机，¥1588/晚。"
+        ));
+
+        // 入住咨询类知识
+        KNOWLEDGE_BASE.put("入住", Arrays.asList(
+                "入住需携带身份证原件，外籍人士需护照+签证。",
+                "宠物不可带入，导盲犬除外。",
+                "可提前致电前台寄存行李，免费保管至离店当日22:00。"
+        ));
+        KNOWLEDGE_BASE.put("退房", Arrays.asList(
+                "退房可于前台办理或使用自助机，支持快速退房（钥匙投入信箱）。",
+                "延迟退房至14:00需加收半日房费，18:00前加收全日房费。"
+        ));
+
+        // 酒店服务查询类知识
+        KNOWLEDGE_BASE.put("餐饮", Arrays.asList(
+                "中餐厅营业时间11:00-14:00,17:00-21:00；西餐厅24小时营业。",
+                "客房送餐服务时间6:00-24:00，拨打'0'点餐。"
+        ));
+        KNOWLEDGE_BASE.put("设施", Arrays.asList(
+                "健身房24小时开放，泳池7:00-22:00（需戴泳帽），免费WIFI覆盖全楼。",
+                "停车场收费¥10/小时，住店客人免费（需登记车牌）。"
+        ));
+
+        // 商城业务类知识
+        KNOWLEDGE_BASE.put("商城", Arrays.asList(
+                "酒店商城提供特产礼盒、SPA套餐、餐饮券，扫码小程序下单。",
+                "会员积分可兑换房型升级、餐饮折扣或免费早餐。"
+        ));
+        KNOWLEDGE_BASE.put("优惠", Arrays.asList(
+                "当前活动：连住3晚享8折，加赠双人下午茶。",
+                "首次注册会员立减¥50，并赠送200积分。"
+        ));
+    }
+
+    // 意图识别关键词映射
+    private static final Map<Pattern, String> INTENT_MAP = new LinkedHashMap<>();
+
+    static {
+        INTENT_MAP.put(Pattern.compile(".*(预订|预定|订房|房价|房间|房型).*"), "预订");
+        INTENT_MAP.put(Pattern.compile(".*(取消|退订|退款|变更).*"), "取消");
+        INTENT_MAP.put(Pattern.compile(".*(入住|check in|CI).*"), "入住");
+        INTENT_MAP.put(Pattern.compile(".*(退房|check out|CO).*"), "退房");
+        INTENT_MAP.put(Pattern.compile(".*(餐厅|吃饭|早餐|晚餐|送餐|餐饮).*"), "餐饮");
+        INTENT_MAP.put(Pattern.compile(".*(健身房|泳池|游泳|停车|wifi|WiFi|设施).*"), "设施");
+        INTENT_MAP.put(Pattern.compile(".*(商城|商店|购买|商品|特产|积分).*"), "商城");
+        INTENT_MAP.put(Pattern.compile(".*(优惠|折扣|活动|促销).*"), "优惠");
+    }
+
+    // ==================== 核心RAG流程 ====================
+    private static String retrieveKnowledge(String query) {
+        String intent = "预订"; // 默认意图
+        for (Map.Entry<Pattern, String> entry : INTENT_MAP.entrySet()) {
+            if (entry.getKey().matcher(query).matches()) {
+                intent = entry.getValue();
+                break;
+            }
+        }
+
+        List<String> relevantDocs = KNOWLEDGE_BASE.getOrDefault(intent, Collections.emptyList());
+        if (relevantDocs.isEmpty()) {
+            // 如果意图没有匹配到具体知识，返回通用欢迎语
+            return "您好，我是酒店AI客服。我可以帮您解答预订、入住、服务查询、商城购物等问题。请问有什么可以帮您？";
+        }
+        return String.join("\n", relevantDocs);
+    }
+
+    private static String generateAnswer(String query, String context, Generation generation, String apiKey)
+            throws ApiException, NoApiKeyException, InputRequiredException {
+        // 构建提示词模板
+        String systemPrompt = "你是酒店管理系统的AI客服助手。请基于提供的【知识库内容】回答用户问题。\n" +
+                "要求：\n" +
+                "1. 回答简洁、友好，不超过150字。\n" +
+                "2. 若知识库中无相关信息，请礼貌说明并引导用户联系人工客服。\n" +
+                "3. 严禁编造酒店政策或价格。\n\n" +
+                "【知识库内容】\n" + context;
+
+        List<Message> messages = new ArrayList<>();
+        messages.add(Message.builder().role(Role.SYSTEM.getValue()).content(systemPrompt).build());
+        messages.add(Message.builder().role(Role.USER.getValue()).content(query).build());
+
+        GenerationParam param = GenerationParam.builder()
+                .model("qwen-max")
+                .apiKey(apiKey)
+                .messages(messages)
+                .maxTokens(500)
+                .temperature(0.7f)
+                .resultFormat(GenerationParam.ResultFormat.MESSAGE)
+                .build();
+
+        GenerationResult result = generation.call(param);
+        return result.getOutput().getChoices().get(0).getMessage().getContent();
+    }
+
+    // ==================== 控制台交互逻辑 ====================
+    private static void printWelcome() {
+        System.out.println("\n============================================");
+        System.out.println("     欢迎使用酒店管理系统AI客服 (MVP演示版)");
+        System.out.println("============================================");
+        System.out.println("我可以帮您解答：");
+        System.out.println("  1. 酒店预订（房型、价格、取消政策等）");
+        System.out.println("  2. 入住咨询（证件、宠物、行李等）");
+        System.out.println("  3. 服务查询（餐饮、健身房、停车等）");
+        System.out.println("  4. 商城业务（积分、优惠活动等）");
+        System.out.println("\n输入 'exit' 或 'quit' 退出对话。");
+        System.out.println("--------------------------------------------\n");
+    }
+
+    private static void handleUserInput(String input, Generation generation, String apiKey) {
+        if (input == null || input.trim().isEmpty()) {
+            System.out.println("客服：您好，请告诉我您需要咨询的问题。");
+            return;
+        }
+
+        // 输入长度限制（防注入）
+        if (input.length() > 2000) {
+            System.out.println("客服：您输入的内容过长，请精简后重试（不超过2000字符）。");
+            return;
+        }
+
+        System.out.println("\n[系统] 正在检索知识库...");
+        String context = retrieveKnowledge(input);
+        System.out.println("[系统] 检索到相关知识点，正在生成回答...\n");
+
+        try {
+            String answer = generateAnswer(input, context, generation, apiKey);
+            // 模拟打字机效果（控制台流式输出）
+            System.out.print("客服：");
+            for (char c : answer.toCharArray()) {
+                System.out.print(c);
+                try {
+                    Thread.sleep(15); // 模拟逐字输出
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    System.out.print(c);
+                }
+            }
+            System.out.println("\n");
+        } catch (ApiException e) {
+            System.err.println("客服：抱歉，AI服务暂时不可用（API错误：" + e.getMessage() + "）。请稍后再试或联系人工客服。");
+        } catch (NoApiKeyException e) {
+            System.err.println("客服：系统配置错误，请联系管理员配置API密钥。");
+        } catch (InputRequiredException e) {
+            System.err.println("客服：请求参数错误，请重试。");
+        }
+    }
+
+    // ==================== 主程序入口 ====================
+    public static void main(String[] args) {
+        // 从环境变量读取API Key（安全实践）
+        String apiKey = System.getenv("DASHSCOPE_API_KEY");
+        if (apiKey == null || apiKey.isEmpty()) {
+            System.err.println("错误：未设置环境变量 DASHSCOPE_API_KEY，请先配置您的阿里百炼API Key。");
+            System.err.println("示例（Linux/Mac）：export DASHSCOPE_API_KEY=your-key-here");
+            System.err.println("示例（Windows）：set DASHSCOPE_API_KEY=your-key-here");
+            return;
+        }
+
+        Generation generation = new Generation();
+        printWelcome();
+
+        try (Scanner scanner = new Scanner(System.in)) {
+            while (true) {
+                System.out.print("您：");
+                String input = scanner.nextLine().trim();
+                if (input.equalsIgnoreCase("exit") || input.equalsIgnoreCase("quit")) {
+                    System.out.println("\n客服：感谢您的咨询，祝您生活愉快！再见~\n");
+                    break;
+                }
+                handleUserInput(input, generation, apiKey);
+            }
+        }
+    }
+}
