@@ -1,5 +1,4 @@
 package com.hotel.ai;
-
 // AICustomerServiceConsole.java
 import com.alibaba.dashscope.aigc.generation.Generation;
 import com.alibaba.dashscope.aigc.generation.GenerationParam;
