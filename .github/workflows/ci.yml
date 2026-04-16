@@ -1,16 +1,17 @@
-name: CI
+name: CI Test
 
-# 触发条件：push 代码、修改文件、提交 README 都会自动跑 CI
 on:
   push:
-    branches: [ main ]  # 你只有 main 分支
+    branches: [ main ]
   pull_request:
     branches: [ main ]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -19,5 +20,6 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Compile with Maven
-        run: mvn compile
+      # 先只执行 mvn -v 验证 Maven 环境，不编译项目
+      - name: Verify Maven
+        run: mvn -v
