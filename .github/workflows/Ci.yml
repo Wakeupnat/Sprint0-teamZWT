@@ -1,6 +1,5 @@
 name: 酒店AI预订系统 CI
 
-# 触发时机
 on:
   push:
     branches: [ main ]
