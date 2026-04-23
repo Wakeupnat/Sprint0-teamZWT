@@ -1,0 +1,42 @@
+name: 酒店AI预订系统 CI
+
+# 触发时机
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 稳定拉取代码
+      - name: 拉取项目代码
+        uses: actions/checkout@v4
+
+      # 2. 官方稳定JDK17配置 + 依赖缓存
+      - name: 配置 JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # 3. 核心！修复Linux mvnw权限问题
+      - name: 赋予Maven执行权限
+        run: chmod +x ./mvnw
+
+      # 4. 编译+运行测试（编码兼容中文）
+      - name: 编译并执行单元测试
+        run: ./mvnw clean test -Dfile.encoding=UTF-8
+
+      # 5. 无论测试成败，都保留测试报告
+      - name: 上传单元测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: target/surefire-reports/
+          retention-days: 7
