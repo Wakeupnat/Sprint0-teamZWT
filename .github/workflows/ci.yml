@@ -11,31 +11,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 拉取项目代码
-      - name: 拉取代码
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      # 2. 配置 JDK 17 (Temurin 官方发行版)
-      - name: 配置 JDK 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'maven' # 自动缓存Maven依赖，构建速度翻倍
+          cache: maven
 
-      # 3. 赋予 Maven Wrapper 执行权限（解决 Linux 环境权限报错）
-      - name: 赋予mvnw执行权限
-        run: chmod +x ./mvnw
+      - name: Grant execute permission to mvnw
+        run: chmod +x mvnw
 
-      # 4. 编译 + 运行全部单元测试
-      - name: 编译并运行所有单元测试
-        run: ./mvnw clean test
-
-      # 5. 上传测试报告（就算测试失败也保留文件）
-      - name: 上传测试报告
-        uses: actions/upload-artifact@v3
-        if: always()
-        with:
-          name: test-report
-          path: target/surefire-reports/
-          retention-days: 7
+      - name: Build and test with Maven
+        run: ./mvnw clean test -Dfile.encoding=UTF-8
