@@ -1,0 +1,32 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:hotelai
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+server:
+  port: 8080
+
+langchain4j:
+  community:
+    dashscope:
+      chat-model:
+        api-key: ${DASHSCOPE_API_KEY}
+        model-name: qwen-plus
+
+jwt:
+  secret: hotelai_jwt_secret_key_1234567890_at_least_256_bits_for_hs256
+  expiration: 7200000
