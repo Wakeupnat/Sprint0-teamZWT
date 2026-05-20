@@ -19,7 +19,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 运行单元测试 + API 集成测试（使用 H2 内存数据库）
+      # 运行单元测试 + API 集成测试
       - name: Run tests
         run: mvn clean verify
 
