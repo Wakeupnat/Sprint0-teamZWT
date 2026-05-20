@@ -1,0 +1,76 @@
+### 变量定义
+@baseUrl = http://localhost:8080
+@sessionId = my-session-123
+
+### 1. 用户注册（可选，如果你还没注册过）
+POST {{baseUrl}}/api/user/register
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "123456",
+  "phone": "13812345678",
+  "email": "test@example.com"
+}
+
+### 2. 用户登录（获取JWT，但聊天接口目前不需要）
+POST {{baseUrl}}/api/user/login
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "123456"
+}
+
+### 3. 预订房间（通过自然语言）
+# 注意：返回的 JSON 中会包含 action="BOOK_ROOM" 和 data 字段
+# 请从响应中复制 reservationId 的值，用于后续入住/离店
+POST {{baseUrl}}/api/chat/sync
+Content-Type: application/json
+X-Session-Id: {{sessionId}}
+
+{
+  "question": "帮我预订一间大床房，入住日期 2026-05-11，离店日期 2026-05-12"
+}
+
+### 4. 查询当前会话的所有预订（直接调用预订查询接口，无需AI）
+GET {{baseUrl}}/api/reservation/my
+X-Session-Id: {{sessionId}}
+
+### 5. 办理入住（自然语言）
+# 将下面的 26 替换成第3步返回的真正的订单号
+POST {{baseUrl}}/api/chat/sync
+Content-Type: application/json
+X-Session-Id: {{sessionId}}
+
+{
+  "question": "办理入住，订单号 42"
+}
+
+### 6. 办理离店（自然语言）
+# 将下面的 26 替换成刚才办理入住的订单号
+POST {{baseUrl}}/api/chat/sync
+Content-Type: application/json
+X-Session-Id: {{sessionId}}
+
+{
+  "question": "退房，订单号 42"
+}
+
+### 7. 直接调用入住接口（非自然语言，验证独立接口）
+POST {{baseUrl}}/api/reservation/checkin
+Content-Type: application/json
+X-Session-Id: {{sessionId}}
+
+{
+  "reservationId": 26
+}
+
+### 8. 直接调用离店接口
+POST {{baseUrl}}/api/reservation/checkout
+Content-Type: application/json
+X-Session-Id: {{sessionId}}
+
+{
+  "reservationId": 26
+}
